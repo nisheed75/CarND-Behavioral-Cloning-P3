@@ -17,14 +17,23 @@ The goals / steps of this project are the following:
 
 
 [//]: # (Image References)
+[image1]: ./examples/left/left_2017_12_03_20_10_06_115.jpg "Example 1 Left"
+[image2]: ./examples/center/center_2017_12_03_20_10_06_115.jpg "Example 1 Center"
+[image3]: ./examples/right/right_2017_12_03_20_10_06_115.jpg "Example 2 Right"
+[image4]: /examples/left/left_2017_12_03_20_10_08_363.jpg "Example 2 Left"
+[image5]: /examples/center/center_2017_12_03_20_10_08_363.jpg "Example 2 Center"
+[image6]: /examples/right/right_2017_12_03_20_10_08_363.jpg "Example 2 Right"
+[image7]: /examples/left/left_2017_12_03_20_10_08_901.jpg "Example 3 Left"
+[image8]: /examples/center/center_2017_12_03_20_10_08_901.jpg "Example 3 Center"
+[image9]: /examples/right/right_2017_12_03_20_10_08_901.jpg "Example 3 Right"
+[image10]: /examples/left/left_2017_12_03_20_10_13_020.jpg "Example 4 Left"
+[image11]: /examples/center/center_2017_12_03_20_10_13_020.jpg "Example 4 Center"
+[image12]: /examples/right/right_2017_12_03_20_10_13_020.jpg "Example 4 Right"
+[image13]: /examples/left/left_2017_12_03_20_11_30_532.jpg "Example 5 Left"
+[image14]: /examples/center/center_2017_12_03_20_11_30_532.jpg "Example 5 Center"
+[image15]: /examples/right/right_2017_12_03_20_11_30_532.jpg "Example 5 Right"
+[image16]: /examples/nVidia_model.png "nVidia Architecture"
 
-[image1]: ./examples/placeholder.png "Model Visualization"
-[image2]: ./examples/placeholder.png "Grayscaling"
-[image3]: ./examples/placeholder_small.png "Recovery Image"
-[image4]: ./examples/placeholder_small.png "Recovery Image"
-[image5]: ./examples/placeholder_small.png "Recovery Image"
-[image6]: ./examples/placeholder_small.png "Normal Image"
-[image7]: ./examples/placeholder_small.png "Flipped Image"
 
 ## Rubric Points
 ### Here I will consider the [rubric points](https://review.udacity.com/#!/rubrics/432/view) individually and describe how I addressed each point in my implementation.  
@@ -48,15 +57,107 @@ python drive.py model.h5
 
 #### 3. Submission code is usable and readable
 
-The model.py file contains the code for training and saving the convolution neural network. The file shows the pipeline I used for training and validating the model, and it contains comments to explain how the code works.
+The model.py file contains the code for training and saving the convolution neural network. The file shows the pipeline I used for training and validating the model, and it contains comments to explain how the code works. I also explain the data pipeline below.
 
+My pipeline was as follow:
+
+1. I get the training data by passing in the location of the data. 
+```python
+	center_paths, left_paths, right_paths, measurements = get_training_data('data\sim_data')
+```
+1.1. The get_training_data function takes the path walks the directores and looks for the driving log file. In my case i made a few attempts to capture data so i instruct the function to omly look for version 2 of my log data. This function returns the path to the center, left, right images and the measurements.
+```python
+def get_training_data(dataPath):
+    """
+    Finds all the images needed for training on the path `dataPath`.
+    Returns `([center_paths], [leftPath], [rightPath], [measurement])`
+    """
+    directories = [x[0] for x in os.walk(dataPath)]
+    dataDirectories = list(filter(lambda directory: os.path.isfile(directory + '\\driving_log_2.csv'), directories))
+    center_total = []
+    left_total = []
+    right_total = []
+    measurement_total = []
+    for directory in dataDirectories:
+        lines = get_log_data(directory)
+        center = []
+        left = []
+        right = []
+        measurements = []
+        for line in lines:
+            measurements.append(float(line[3]))
+            source_path =  line[0].strip()
+            filename = source_path.split('\\')[-1]
+            center.append(directory + '\\IMG\\' +filename)
+            source_path =  line[1].strip()
+            filename = source_path.split('\\')[-1]
+            left.append(directory + '\\IMG\\' + filename)
+            source_path =  line[2].strip()
+            filename = source_path.split('\\')[-1]
+            right.append(directory + '\\IMG\\' + filename)
+        center_total.extend(center)
+        left_total.extend(left)
+        right_total.extend(right)
+        measurement_total.extend(measurements)
+
+    return (center_total, left_total, right_total, measurement_total)	
+```
+1.1. The get_training data uses the get_log_data function to read each line in the log data file.
+
+```python
+def get_log_data(dataPath, skipHeader=False):
+    """
+    Returns the lines from a driving log with base directory `dataPath`.
+    If the file include headers, pass `skipHeader=True`.
+    """
+    lines = []
+    with open(dataPath + '\\driving_log_2.csv') as csvFile:
+        reader = csv.reader(csvFile)
+        if skipHeader:
+            next(reader, None)
+        for line in reader:
+            lines.append(line)
+    return lines
+```
+1. Once the data is read I then merge the center, left and right data into a single teianing set. i adjust the measurement for the left and right image by a corrextion factor to help the car steer back to the cneter. The code that does this is below:
+```python
+image_paths, measurements = merge_images(center_paths, left_paths, right_paths, measurements, 0.2)
+
+def merge_images(center, left, right, measurement, correction):
+    """
+    Combine the image paths from `center`, `left` and `right` using the correction factor `correction`
+    Returns ([image_paths], [measurements])
+    """
+    image_paths = []
+    image_paths.extend(center)
+    image_paths.extend(left)
+    image_paths.extend(right)
+    measurements = []
+    measurements.extend(measurement)
+    measurements.extend([x + correction for x in measurement])
+    measurements.extend([x - correction for x in measurement])
+    return (image_paths, measurements)
+```
 ### Model Architecture and Training Strategy
 
 #### 1. An appropriate model architecture has been employed
 
-My model consists of a convolution neural network with 3x3 filter sizes and depths between 32 and 128 (model.py lines 18-24) 
+I used the Architecture recommended in lecture 11. nVidia has develop a deep learning model called PilotNet that derives the neccesary domain knowledge by observing human drives. The image below shows the model architecture.
 
-The model includes RELU layers to introduce nonlinearity (code line 20), and the data is normalized in the model using a Keras lambda layer (code line 18). 
+
+![alt text][image16]
+
+This model consist of 9 layers including:
+1. A normalization layer 
+1. 5 Convolutional layers
+1. 3 Fully connected layers 
+
+The first layer of the model performs image normlization. This is statically defined and doesn't change during the learning process.
+
+Through the convolution layers the model performs feature extraction. nVidia has expereiment with this and found the best confiuration for the convolution layers. The first 3 layers use a stride of 2x2 and 5x5 kernel and a non stride convolution with a 3 x 3 in the last 2 layers.
+
+It is then followed by 5 fully connected layers leading to the output control value. The fully connected layers are designed to be the controller for steering.  
+
 
 #### 2. Attempts to reduce overfitting in the model
 
